@@ -1,0 +1,170 @@
+version: '3'
+
+services:
+    # Frontend
+    web:
+        image: jitsi/web
+        restart: ${RESTART_POLICY}
+        ports:
+          - 8000:80
+        volumes:
+            - ${DATA_LOCATION}/web:/config
+            - ${DATA_LOCATION}/web/letsencrypt:/etc/letsencrypt
+            - ${DATA_LOCATION}/transcripts:/usr/share/jitsi-meet/transcripts
+        environment:
+            - ENABLE_AUTH=1
+            - ENABLE_GUESTS=1
+            - ENABLE_LETSENCRYPT=0
+            - ENABLE_HTTP_REDIRECT=0
+            - ENABLE_TRANSCRIPTIONS=0
+            - DISABLE_HTTPS=1
+            - JICOFO_AUTH_USER=focus
+            - PUBLIC_URL=https://jitsi.$BASE_DOMAIN
+            - XMPP_DOMAIN=$XMPP_DOMAIN
+            - XMPP_AUTH_DOMAIN=auth.$XMPP_DOMAIN
+            - XMPP_BOSH_URL_BASE=http://xmpp.$XMPP_DOMAIN:5280
+            - XMPP_GUEST_DOMAIN=guest.$XMPP_DOMAIN
+            - XMPP_MUC_DOMAIN=muc.$XMPP_DOMAIN
+            - XMPP_RECORDER_DOMAIN=recorder.$XMPP_DOMAIN
+            - TZ=$TIME_ZONE
+            - JIBRI_BREWERY_MUC=jibribrewery
+            - JIBRI_PENDING_TIMEOUT=90
+            - JIBRI_XMPP_USER=jibri
+            - JIBRI_XMPP_PASSWORD=$JIBRI_XMPP_PASSWORD
+            - JIBRI_RECORDER_USER=recorder
+            - JIBRI_RECORDER_PASSWORD=$JIBRI_RECORDER_PASSWORD
+            - ENABLE_RECORDING=0
+        labels:
+          - "traefik.enable=true"
+            #- "traefik.http.services.jitsi.loadbalancer.server.port=80"
+          - "traefik.http.routers.jitsi.rule=Host(`jitsi.${BASE_DOMAIN}`)"
+          - "traefik.http.routers.jitsi.entrypoints=websecure"
+          - "traefik.http.routers.jitsi.tls.certresolver=leresolver"
+          - "traefik.http.middlewares.jitsiHeaders.headers.framedeny=true"
+          - "traefik.http.middlewares.jitsiHeaders.headers.sslredirect=true"
+          - "traefik.http.middlewares.jitsiHeaders.headers.stsIncludeSubdomains=true"
+          - "traefik.http.middlewares.jitsiHeaders.headers.stsPreload=true"
+          - "traefik.http.middlewares.jitsiHeaders.headers.forceSTSHeader=true"
+          - "traefik.http.middlewares.jitsiHeaders.headers.contentTypeNosniff=true"
+          - "traefik.http.middlewares.jitsiHeaders.headers.browserXssFilter=true"
+          - "traefik.http.middlewares.jitsiHeaders.headers.stsSeconds=31536000"
+          - "traefik.http.middlewares.jitsiCompress.compress=true"
+            #- "traefik.http.routers.jitsi.middlewares=jitsiHeaders,jitsiCompress"
+        networks:
+            webapp:
+            meet.jitsi:
+                aliases:
+                    - ${XMPP_DOMAIN}
+
+    # XMPP server
+    prosody:
+        image: jitsi/prosody
+        restart: ${RESTART_POLICY}
+        expose:
+            - '5222'
+            - '5347'
+            - '5280'
+        volumes:
+            - ${DATA_LOCATION}/prosody:/config
+        environment:
+            - AUTH_TYPE=ldap
+            - ENABLE_AUTH=1
+            - ENABLE_GUESTS=1
+            - LDAP_URL=ldap://ldap
+            - LDAP_BASE=$LDAP_BASE_DN
+            - LDAP_BINDDN=cn=meet,ou=Applications,$LDAP_BASE_DN
+            - LDAP_BINDPW=$MEET_USER_PASS
+            - LDAP_FILTER=(uid=%u)
+            - LDAP_USE_TLS=0
+            - LDAP_TLS_CHECK_PEER=0
+            - LDAP_START_TLS=0
+            - XMPP_DOMAIN=$XMPP_DOMAIN
+            - XMPP_AUTH_DOMAIN=auth.$XMPP_DOMAIN
+            - XMPP_GUEST_DOMAIN=guest.$XMPP_DOMAIN
+            - XMPP_MUC_DOMAIN=muc.$XMPP_DOMAIN
+            - XMPP_INTERNAL_MUC_DOMAIN=internal-muc.$XMPP_DOMAIN
+            - XMPP_MODULES
+            - XMPP_MUC_MODULES
+            - XMPP_INTERNAL_MUC_MODULES
+            - XMPP_RECORDER_DOMAIN=recorder.$XMPP_DOMAIN
+            - JICOFO_COMPONENT_SECRET=$JICOFO_COMPONENT_SECRET
+            - JICOFO_AUTH_USER=focus
+            - JICOFO_AUTH_PASSWORD=$JICOFO_AUTH_PASSWORD
+            - JVB_AUTH_USER=jvb
+            - JVB_AUTH_PASSWORD=$JVB_AUTH_PASSWORD
+            - JIGASI_XMPP_USER=jigasi
+            - JIGASI_XMPP_PASSWORD=$JIGASI_XMPP_PASSWORD
+            - JIBRI_XMPP_USER=jibri
+            - JIBRI_XMPP_PASSWORD=$JIBRI_XMPP_PASSWORD
+            - JIBRI_RECORDER_USER=recorder
+            - JIBRI_RECORDER_PASSWORD=$JIBRI_RECORDER_PASSWORD
+            - LOG_LEVEL
+            - TZ=$TIME_ZONE
+        networks:
+            ldap:
+            meet.jitsi:
+                aliases:
+                    - xmpp.${XMPP_DOMAIN}
+
+    # Focus component
+    jicofo:
+        image: jitsi/jicofo
+        restart: ${RESTART_POLICY}
+        volumes:
+            - ${DATA_LOCATION}/jicofo:/config
+        environment:
+            - ENABLE_AUTH=1
+            - XMPP_DOMAIN=$XMPP_DOMAIN
+            - XMPP_AUTH_DOMAIN=auth.$XMPP_DOMAIN
+            - XMPP_INTERNAL_MUC_DOMAIN=internal-muc.$XMPP_DOMAIN
+            - XMPP_SERVER=xmpp.$XMPP_DOMAIN
+            - JICOFO_COMPONENT_SECRET=$JICOFO_COMPONENT_SECRET
+            - JICOFO_AUTH_USER=focus
+            - JICOFO_AUTH_PASSWORD=$JICOFO_AUTH_PASSWORD
+            - JVB_BREWERY_MUC=jvbbrewery
+            - JIGASI_BREWERY_MUC=jigasibrewery
+            - JIBRI_BREWERY_MUC=jibribrewery
+            - JIBRI_PENDING_TIMEOUT=90
+            - TZ=$TIME_ZONE
+        depends_on:
+            - prosody
+        networks:
+            meet.jitsi:
+
+    # Video bridge
+    jvb:
+        image: jitsi/jvb
+        restart: ${RESTART_POLICY}
+        ports:
+            - 10000:10000/udp
+            - 4443:4443
+        volumes:
+            - ${DATA_LOCATION}/jvb:/config
+        environment:
+            - DOCKER_HOST_ADDRESS=192.168.1.17
+            - XMPP_AUTH_DOMAIN=auth.$XMPP_DOMAIN
+            - XMPP_INTERNAL_MUC_DOMAIN=internal-muc.$XMPP_DOMAIN
+            - XMPP_SERVER=xmpp.$XMPP_DOMAIN
+            - JVB_AUTH_USER=jvb
+            - JVB_AUTH_PASSWORD=$JVB_AUTH_PASSWORD
+            - JVB_BREWERY_MUC=jvbbrewery
+            - JVB_PORT=10000
+            - JVB_TCP_HARVESTER_DISABLED=true
+            - JVB_TCP_PORT=4443
+            - JVB_STUN_SERVERS=meet-jit-si-turnrelay.jitsi.net:443
+            - JVB_ENABLE_APIS
+            - TZ=$TIME_ZONE
+        depends_on:
+            - prosody
+        networks:
+            meet.jitsi:
+
+# Custom network so all services can communicate using a FQDN
+networks:
+    meet.jitsi:
+    webapp:
+      external:
+        name: webapp
+    ldap:
+      external:
+        name: ldap
